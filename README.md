@@ -1,75 +1,101 @@
-# React + TypeScript + Vite
+# Hansik — Korean food classifier
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A responsive React demo for recognizing two Korean food classes—bibimbap and
+fried rice—with a PyTorch image-classification model served by FastAPI on
+Hugging Face Spaces.
 
-Currently, two official plugins are available:
+## Screenshot
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+_Add a screenshot of the running app here._
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Upload, drag and drop, or paste a JPG, PNG, or WebP image (up to 5 MB).
+- Preview and remove an image before submitting it.
+- Display the predicted class, confidence, and probabilities returned by the API.
+- Show classifier availability and friendly validation, network, and server errors.
+- Support light and dark themes.
 
-## Expanding the ESLint configuration
+## Tech stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- React 19, TypeScript, and Vite
+- Tailwind CSS 4
+- Lucide icons
+- FastAPI image-classification API hosted on Hugging Face Spaces
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Run locally
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```sh
+npm install
+cp .env.example .env.local
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+Set `VITE_API_URL` in `.env.local` to the FastAPI Space origin:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+```env
+VITE_API_URL=https://agus-dev-korean-food-classifier.hf.space
+```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+The frontend calls `GET /health` when the classifier area loads. Predictions
+are sent as `multipart/form-data` to `POST /predict` with the image in the
+`file` field. The browser sets the multipart content type and boundary; do not
+set a JSON content type for this endpoint.
 
+The prediction response is expected to contain:
+
+```json
+{
+  "predicted_class": "bibimbap",
+  "confidence": 0.87,
+  "probabilities": {
+    "bibimbap": 0.87,
+    "fried_rice": 0.13
+  }
+}
+```
+
+## Deploy to Vercel
+
+1. Open the Vercel project.
+2. Go to **Settings → Environment Variables**.
+3. Add `VITE_API_URL` with value `https://agus-dev-korean-food-classifier.hf.space`.
+4. Apply it to Production and Preview as needed.
+5. Redeploy the frontend so the variable takes effect.
+
+Vite environment variables are included in the browser bundle. Store only the
+public API origin here; never put secrets in a `VITE_*` variable.
+
+The backend must allow cross-origin requests from the deployed Vercel
+production domain and any preview domains you use. Configure allowed origins in
+FastAPI rather than relying on unrestricted production CORS. The published
+Space source reads a comma-separated `ALLOWED_ORIGINS` setting. Add the exact
+Vercel production and preview origins to the Hugging Face Space environment and
+redeploy it; do not use `*` for production.
+
+## Project structure
+
+```text
+src/
+  api/
+    predict.ts             # API calls, response validation, and API errors
+  components/
+    ClassifierPanel.tsx    # Health, upload, preview, and prediction states
+    Footer.tsx
+    Header.tsx
+    ResultCard.tsx         # Prediction summary and probability bars
+    ThemeToggle.tsx
+  hooks/
+    useTheme.ts
+  App.tsx
+  index.css
+.env.example
+```
+
+## Scripts
+
+```sh
+npm run dev
+npm run build
+npm run lint
 ```

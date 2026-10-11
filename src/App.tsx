@@ -1,4 +1,5 @@
-import { ArrowDown, ArrowUpRight, CookingPot, Sparkles } from 'lucide-react'
+import { ArrowDown, CookingPot, Sparkles } from 'lucide-react'
+import { ClassifierPanel } from './components/ClassifierPanel'
 import { Footer } from './components/Footer'
 import { Header } from './components/Header'
 
@@ -76,20 +77,7 @@ function App() {
             <div className="absolute bottom-[24%] left-[13%] size-2 rounded-full bg-olive/80" />
           </div>
         </section>
-        <section
-          id="classifier"
-          aria-label="Classifier workspace coming soon"
-          className="mb-12 flex flex-col items-center justify-between gap-4 rounded-3xl border border-border bg-surface/70 px-6 py-5 text-center sm:mb-16 sm:flex-row sm:text-left"
-        >
-          <p className="text-sm text-muted">
-            The demo is getting ready for its close-up.
-            <span className="ml-1 font-semibold text-foreground">
-              {' '}
-              Your image goes here next.
-            </span>
-          </p>
-          <ArrowUpRight aria-hidden="true" className="hidden size-5 text-accent sm:block" />
-        </section>
+        <ClassifierPanel />
       </main>
       <Footer />
     </div>
