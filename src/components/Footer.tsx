@@ -1,22 +1,27 @@
-import { ArrowUpRight } from 'lucide-react'
+import { ArrowUpRight } from "lucide-react";
 
 const footerLinks = [
   {
-    label: 'Frontend',
-    href: 'https://github.com/agus787-dev/korean-food-classifier-frontend',
+    label: "Frontend",
+    href: "https://github.com/agus787-dev/korean-food-classifier-frontend",
   },
   {
-    label: 'Backend',
-    href: 'https://github.com/your-username/korean-food-classifier-api',
+    label: "Backend",
+    href: "https://github.com/agus787-dev/korean-food-binary-classifier",
   },
-]
+];
 
 export function Footer() {
   return (
     <footer className="border-t border-border">
       <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-5 py-6 text-xs text-muted sm:flex-row sm:px-8">
-        <p>Educational project · Made with curiosity and Korean comfort food.</p>
-        <nav aria-label="Project repositories" className="flex items-center gap-5">
+        <p>
+          Educational project · Made with curiosity and Korean comfort food.
+        </p>
+        <nav
+          aria-label="Project repositories"
+          className="flex items-center gap-5"
+        >
           {footerLinks.map(({ label, href }) => (
             <a
               key={label}
@@ -32,5 +37,5 @@ export function Footer() {
         </nav>
       </div>
     </footer>
-  )
+  );
 }
