@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
+  CheckCircle2,
   ImagePlus,
   LoaderCircle,
   RefreshCw,
@@ -8,20 +9,20 @@ import {
   Upload,
   X,
 } from 'lucide-react'
-import { ApiError } from '../api/client'
-import { createPrediction } from '../api/predictions'
-import type { Prediction } from '../types/api'
+import { ApiError, checkApiHealth, predictImage, type Prediction } from '../api/predict'
 import { ResultCard } from './ResultCard'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024
 const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const ACCEPTED_EXTENSIONS = /\.(jpe?g|png|webp)$/i
 
-function getErrorMessage(error: unknown, timedOut: boolean): string {
-  if (timedOut) {
-    return 'The prediction took longer than 90 seconds. The model may still be waking up; please try again.'
+type HealthState = 'checking' | 'ready' | 'unavailable'
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message
   }
-  if (error instanceof ApiError) return error.message
+
   return 'Something went wrong while classifying this image. Please try again.'
 }
 
@@ -29,7 +30,10 @@ function validateImage(file: File): string | undefined {
   if (!ACCEPTED_TYPES.has(file.type) || !ACCEPTED_EXTENSIONS.test(file.name)) {
     return 'Choose a JPG, PNG, or WebP image.'
   }
-  if (file.size > MAX_FILE_SIZE) return 'This image is larger than 5 MB. Choose a smaller file.'
+
+  if (file.size > MAX_FILE_SIZE) {
+    return 'This image is larger than 5 MB. Choose a smaller file.'
+  }
 }
 
 export function ClassifierPanel() {
@@ -39,19 +43,44 @@ export function ClassifierPanel() {
   const [prediction, setPrediction] = useState<Prediction | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isWaking, setIsWaking] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
-  const file = selection?.file ?? null
+  const [health, setHealth] = useState<HealthState>('checking')
+  const [healthMessage, setHealthMessage] = useState<string | null>(null)
 
-  useEffect(
-    () => () => {
+  const file = selection?.file ?? null
+  const previewUrl = selection?.previewUrl ?? null
+
+  useEffect(() => {
+    return () => {
       if (selection) URL.revokeObjectURL(selection.previewUrl)
-    },
-    [selection],
-  )
+    }
+  }, [selection])
+
+  useEffect(() => {
+    let isActive = true
+
+    void checkApiHealth()
+      .then(() => {
+        if (isActive) {
+          setHealth('ready')
+          setHealthMessage(null)
+        }
+      })
+      .catch((reason: unknown) => {
+        if (isActive) {
+          setHealth('unavailable')
+          setHealthMessage(getErrorMessage(reason))
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [])
 
   const setImage = useCallback((nextFile: File | undefined) => {
     if (!nextFile) return
+
     const validationMessage = validateImage(nextFile)
     setPrediction(null)
     setError(validationMessage ?? null)
@@ -59,36 +88,38 @@ export function ClassifierPanel() {
       setSelection(null)
       return
     }
+
     setSelection({ file: nextFile, previewUrl: URL.createObjectURL(nextFile) })
   }, [])
+
+  async function refreshHealth() {
+    setHealth('checking')
+    setHealthMessage(null)
+
+    try {
+      await checkApiHealth()
+      setHealth('ready')
+    } catch (reason) {
+      setHealth('unavailable')
+      setHealthMessage(getErrorMessage(reason))
+    }
+  }
 
   async function handlePredict() {
     if (!file || isSubmittingRef.current) return
 
     isSubmittingRef.current = true
     setIsSubmitting(true)
-    setIsWaking(false)
     setError(null)
     setPrediction(null)
 
-    const controller = new AbortController()
-    let timedOut = false
-    const timeout = window.setTimeout(() => {
-      timedOut = true
-      controller.abort()
-    }, 90_000)
-    const wakingMessage = window.setTimeout(() => setIsWaking(true), 5_000)
-
     try {
-      setPrediction(await createPrediction(file, controller.signal))
+      setPrediction(await predictImage(file))
     } catch (reason) {
-      setError(getErrorMessage(reason, timedOut))
+      setError(getErrorMessage(reason))
     } finally {
-      window.clearTimeout(timeout)
-      window.clearTimeout(wakingMessage)
       isSubmittingRef.current = false
       setIsSubmitting(false)
-      setIsWaking(false)
     }
   }
 
@@ -102,14 +133,18 @@ export function ClassifierPanel() {
   useEffect(() => {
     function handlePaste(event: ClipboardEvent) {
       if (isSubmittingRef.current) return
-      const item = Array.from(event.clipboardData?.items ?? []).find((entry) =>
-        entry.type.startsWith('image/'),
+
+      const imageItem = Array.from(event.clipboardData?.items ?? []).find((item) =>
+        item.type.startsWith('image/'),
       )
-      const pasted = item?.getAsFile()
-      if (pasted) {
-        event.preventDefault()
-        const extension = pasted.type === 'image/jpeg' ? 'jpg' : pasted.type.split('/')[1]
-        setImage(new File([pasted], `pasted-image.${extension}`, { type: pasted.type }))
+
+      if (imageItem) {
+        const pastedFile = imageItem.getAsFile()
+        if (pastedFile) {
+          event.preventDefault()
+          const extension = pastedFile.type === 'image/jpeg' ? 'jpg' : pastedFile.type.split('/')[1]
+          setImage(new File([pastedFile], `pasted-image.${extension}`, { type: pastedFile.type }))
+        }
       }
     }
 
@@ -117,19 +152,54 @@ export function ClassifierPanel() {
     return () => window.removeEventListener('paste', handlePaste)
   }, [setImage])
 
+  const isBusy = isSubmitting || health === 'checking'
+
   return (
-    <section id="classifier" aria-labelledby="classifier-title" className="scroll-mt-8 py-12 sm:py-16">
+    <section id="classifier" aria-labelledby="classifier-title" className="scroll-mt-8 pb-20">
       <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-12">
         <div className="flex flex-col justify-center">
           <div className="mb-4 flex size-11 items-center justify-center rounded-2xl bg-[#f7e9dc] text-accent dark:bg-[#49332d]">
             <Sparkles aria-hidden="true" className="size-5" />
           </div>
-          <h1 id="classifier-title" className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          <h2 id="classifier-title" className="text-3xl font-semibold tracking-tight sm:text-4xl">
             What&apos;s on your plate?
-          </h1>
+          </h2>
           <p className="mt-3 max-w-md leading-7 text-muted">
-            Add a food photo and let the classifier take a closer look. It knows bibimbap and fried rice.
+            Add a food photo and let the model take a closer look. It knows bibimbap and fried rice.
           </p>
+          <div className="mt-6 flex items-center gap-2 text-sm">
+            {health === 'ready' ? (
+              <>
+                <CheckCircle2 aria-hidden="true" className="size-4 text-olive" />
+                <span className="text-muted">Classifier is online</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle
+                  aria-hidden="true"
+                  className={`size-4 ${health === 'checking' ? 'text-muted' : 'text-accent'}`}
+                />
+                <span className="text-muted">
+                  {health === 'checking' ? 'Checking the classifier…' : 'Classifier may be unavailable'}
+                </span>
+                {health !== 'checking' && (
+                  <button
+                    type="button"
+                    onClick={() => void refreshHealth()}
+                    className="ml-1 inline-flex items-center gap-1 font-semibold text-accent hover:text-accent-strong"
+                  >
+                    <RefreshCw aria-hidden="true" className="size-3.5" />
+                    Check again
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+          {healthMessage && health !== 'ready' && (
+            <p className="mt-2 text-sm leading-6 text-muted" role="status">
+              {healthMessage}
+            </p>
+          )}
         </div>
 
         <div className="rounded-[1.75rem] border border-border bg-surface p-5 shadow-[0_16px_50px_rgba(64,47,29,0.07)] sm:p-7">
@@ -141,8 +211,8 @@ export function ClassifierPanel() {
               }}
               onDragOver={(event) => event.preventDefault()}
               onDragLeave={(event) => {
-                const target = event.relatedTarget
-                if (!(target instanceof Node) || !event.currentTarget.contains(target)) {
+                const relatedTarget = event.relatedTarget
+                if (!(relatedTarget instanceof Node) || !event.currentTarget.contains(relatedTarget)) {
                   setIsDragging(false)
                 }
               }}
@@ -158,9 +228,15 @@ export function ClassifierPanel() {
               }`}
             >
               <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-surface text-accent shadow-sm">
-                {isDragging ? <Upload aria-hidden="true" className="size-5" /> : <ImagePlus aria-hidden="true" className="size-5" />}
+                {isDragging ? (
+                  <Upload aria-hidden="true" className="size-5" />
+                ) : (
+                  <ImagePlus aria-hidden="true" className="size-5" />
+                )}
               </div>
-              <p className="text-sm font-semibold">{isDragging ? 'Drop your image here' : 'Drag and drop a food photo'}</p>
+              <p className="text-sm font-semibold">
+                {isDragging ? 'Drop your image here' : 'Drag and drop a food photo'}
+              </p>
               <p className="mt-1.5 text-xs text-muted">JPG, PNG, or WebP · up to 5 MB</p>
               <input
                 ref={inputRef}
@@ -187,9 +263,9 @@ export function ClassifierPanel() {
           ) : (
             <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
               <div className="relative flex min-h-56 items-center justify-center overflow-hidden rounded-2xl bg-background sm:min-h-72">
-                {selection && (
+                {previewUrl && (
                   <img
-                    src={selection.previewUrl}
+                    src={previewUrl}
                     alt={`Selected food image: ${file.name}`}
                     className="max-h-80 w-full object-contain"
                   />
@@ -204,43 +280,39 @@ export function ClassifierPanel() {
                   <X aria-hidden="true" className="size-4" />
                 </button>
               </div>
-              {prediction ? (
-                <div>
-                  <ResultCard prediction={prediction} />
-                  <p className="mt-3 text-sm leading-6 text-muted">
-                    Your photo is saved to your history and can be viewed by the site administrator. You can delete it any time.
-                  </p>
+              <div className="flex flex-col justify-center">
+                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-muted">
+                  Selected image
                 </div>
-              ) : (
-                <div className="flex flex-col justify-center">
-                  <div className="text-xs font-semibold uppercase tracking-[0.15em] text-muted">Selected image</div>
-                  <p className="mt-2 break-all text-sm font-semibold">{file.name}</p>
-                  <p className="mt-1 text-xs text-muted">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                  <button
-                    type="button"
-                    onClick={() => void handlePredict()}
-                    disabled={isSubmitting}
-                    className="mt-6 inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(201,73,45,0.18)] transition hover:-translate-y-0.5 hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
-                        Analyzing image…
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles aria-hidden="true" className="size-4" />
-                        Predict food
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
+                <p className="mt-2 break-all text-sm font-semibold">{file.name}</p>
+                <p className="mt-1 text-xs text-muted">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                <button
+                  type="button"
+                  onClick={() => void handlePredict()}
+                  disabled={isBusy}
+                  className="mt-6 inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(201,73,45,0.18)] transition hover:-translate-y-0.5 hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+                      Analyzing image…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles aria-hidden="true" className="size-4" />
+                      Predict food
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           )}
 
           {error && (
-            <div role="alert" className="mt-5 flex flex-col gap-3 rounded-2xl border border-accent/25 bg-accent/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div
+              role="alert"
+              className="mt-5 flex flex-col gap-3 rounded-2xl border border-accent/25 bg-accent/5 p-4 sm:flex-row sm:items-center sm:justify-between"
+            >
               <p className="flex items-start gap-2 text-sm leading-6 text-foreground">
                 <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-accent" />
                 {error}
@@ -260,13 +332,15 @@ export function ClassifierPanel() {
           )}
 
           {isSubmitting && (
-            <div className="mt-5 flex items-center gap-3 rounded-2xl bg-background px-4 py-3 text-sm text-muted" role="status" aria-live="polite">
-              <LoaderCircle aria-hidden="true" className="size-4 shrink-0 animate-spin text-accent" />
-              {isWaking
-                ? 'Waking up the model, this can take up to a minute...'
-                : 'The model is looking at your photo. First requests can take a little longer.'}
+            <div className="mt-5 flex items-center gap-3 rounded-2xl bg-background px-4 py-3 text-sm text-muted" role="status">
+              <LoaderCircle aria-hidden="true" className="size-4 animate-spin text-accent" />
+              The model is looking at your photo. First requests can take a little longer.
             </div>
           )}
+
+          <div aria-live="polite" aria-atomic="true">
+            {prediction && <ResultCard prediction={prediction} />}
+          </div>
         </div>
       </div>
     </section>

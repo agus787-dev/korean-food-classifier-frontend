@@ -1,45 +1,29 @@
 # Hansik — Korean food classifier
 
-A responsive React application for classifying Korean food photos, reviewing
-prediction history, and collecting user feedback. The frontend communicates
-only with the Node.js/Express backend; the backend forwards prediction requests
-to the separately deployed model service.
+A responsive React demo for recognizing two Korean food classes—bibimbap and
+fried rice—with a PyTorch image-classification model served by FastAPI on
+Hugging Face Spaces.
 
-## Screenshots
+## Screenshot
 
-_Add a screenshot of the public landing page here._
-
-_Add a screenshot of the prediction and feedback experience here._
-
-_Add a screenshot of the admin dashboard here._
-
-_Add screenshots of the admin users, predictions, and feedback pages here._
+_Add a screenshot of the running app here._
 
 ## Features
 
-- Register and sign in; authenticated sessions are restored from a JWT stored
-  in browser local storage.
-- Upload, drag and drop, or paste a JPG, PNG, or WebP image up to 5 MB.
-- View a classification, confidence, and per-class probabilities.
-- Submit, update, or remove feedback for a prediction.
-- Review paginated prediction history, including lazily loaded saved thumbnails.
-- Manage the account profile and sign out.
-- Admin dashboard with usage and feedback statistics, user role management,
-  prediction filters, feedback review, and CSV export.
-- Light and dark themes with responsive layouts and keyboard-accessible
-  dialogs.
+- Upload, drag and drop, or paste a JPG, PNG, or WebP image (up to 5 MB).
+- Preview and remove an image before submitting it.
+- Display the predicted class, confidence, and probabilities returned by the API.
+- Show classifier availability and friendly validation, network, and server errors.
+- Support light and dark themes.
 
 ## Tech stack
 
 - React 19, TypeScript, and Vite
 - Tailwind CSS 4
-- React Router
-- Recharts
 - Lucide icons
+- FastAPI image-classification API hosted on Hugging Face Spaces
 
 ## Run locally
-
-Requirements: Node.js supported by the frontend toolchain and a running backend.
 
 ```sh
 npm install
@@ -47,60 +31,66 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Configure `.env.local` with the backend origin. The API client adds `/api`
-paths itself.
+Set `VITE_API_URL` in `.env.local` to the FastAPI Space origin:
 
 ```env
-VITE_API_URL=http://localhost:3000
-VITE_USE_MOCK=false
+VITE_API_URL=https://agus-dev-korean-food-classifier.hf.space
 ```
 
-`VITE_USE_MOCK=true` enables a mock result for the prediction request only, and
-only while running Vite in development mode. Authentication, history, feedback,
-images, and admin APIs still require the backend. Never put passwords, tokens,
-or other secrets in Vite environment variables.
+The frontend calls `GET /health` when the classifier area loads. Predictions
+are sent as `multipart/form-data` to `POST /predict` with the image in the
+`file` field. The browser sets the multipart content type and boundary; do not
+set a JSON content type for this endpoint.
 
-The backend must allow the frontend's development or deployed origin through
-its CORS configuration. The browser sends prediction uploads as
-`multipart/form-data` with the `file` field; do not set the multipart
-`Content-Type` manually.
+The prediction response is expected to contain:
 
-## Routes
-
-| Route | Access | Purpose |
-| --- | --- | --- |
-| `/` | Public | Landing page |
-| `/login`, `/register` | Public | Account access |
-| `/predict` | Signed in | Upload and classify a photo; submit feedback |
-| `/history` | Signed in | Browse, inspect, and delete predictions |
-| `/profile` | Signed in | Account details and prediction count |
-| `/admin` | Admin | Statistics dashboard |
-| `/admin/users` | Admin | Search accounts and manage roles |
-| `/admin/predictions` | Admin | Filter and inspect predictions |
-| `/admin/feedback` | Admin | Review feedback and export CSV |
-
-Admin routes are guarded in the UI, and API requests continue to use the
-backend's authorization. A non-admin account receives a clear unauthorized
-state instead of an admin-page redirect loop.
-
-## Creating the first administrator
-
-Create or register an account first. Then, from the backend project root, run
-the backend's admin creation command using that account's email:
-
-```sh
-npm run create-admin -- user@example.com
+```json
+{
+  "predicted_class": "bibimbap",
+  "confidence": 0.87,
+  "probabilities": {
+    "bibimbap": 0.87,
+    "fried_rice": 0.13
+  }
+}
 ```
 
-The account's role is refreshed on its next authenticated request. Sign out and
-sign back in if the admin navigation does not appear immediately.
+## Deploy to Vercel
 
-## Deployment
+1. Open the Vercel project.
+2. Go to **Settings → Environment Variables**.
+3. Add `VITE_API_URL` with value `https://agus-dev-korean-food-classifier.hf.space`.
+4. Apply it to Production and Preview as needed.
+5. Redeploy the frontend so the variable takes effect.
 
-Set `VITE_API_URL` to the public Node backend origin in the hosting provider's
-environment settings, then rebuild and redeploy the frontend. Configure the
-backend's CORS allowlist to include the deployed frontend origin. The frontend
-must never be configured to call the model service directly.
+Vite environment variables are included in the browser bundle. Store only the
+public API origin here; never put secrets in a `VITE_*` variable.
+
+The backend must allow cross-origin requests from the deployed Vercel
+production domain and any preview domains you use. Configure allowed origins in
+FastAPI rather than relying on unrestricted production CORS. The published
+Space source reads a comma-separated `ALLOWED_ORIGINS` setting. Add the exact
+Vercel production and preview origins to the Hugging Face Space environment and
+redeploy it; do not use `*` for production.
+
+## Project structure
+
+```text
+src/
+  api/
+    predict.ts             # API calls, response validation, and API errors
+  components/
+    ClassifierPanel.tsx    # Health, upload, preview, and prediction states
+    Footer.tsx
+    Header.tsx
+    ResultCard.tsx         # Prediction summary and probability bars
+    ThemeToggle.tsx
+  hooks/
+    useTheme.ts
+  App.tsx
+  index.css
+.env.example
+```
 
 ## Scripts
 
@@ -108,5 +98,4 @@ must never be configured to call the model service directly.
 npm run dev
 npm run build
 npm run lint
-npm run preview
 ```

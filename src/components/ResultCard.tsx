@@ -1,7 +1,10 @@
 import { BadgeCheck } from 'lucide-react'
-import type { FoodClass, Prediction, PredictionFeedback } from '../types/api'
-import { FOOD_LABELS } from '../utils/food'
-import { FeedbackControl } from './FeedbackControl'
+import type { FoodClass, Prediction } from '../api/predict'
+
+const FOOD_LABELS: Record<FoodClass, string> = {
+  bibimbap: 'Bibimbap',
+  fried_rice: 'Fried rice',
+}
 
 const FOOD_DESCRIPTIONS: Record<FoodClass, string> = {
   bibimbap:
@@ -12,21 +15,11 @@ const FOOD_DESCRIPTIONS: Record<FoodClass, string> = {
 
 interface ResultCardProps {
   prediction: Prediction
-  onFeedbackChange?: (feedback: PredictionFeedback | null) => void
-  showFeedback?: boolean
 }
 
-function ProbabilityBar({
-  foodClass,
-  probability,
-  predictedClass,
-}: {
-  foodClass: FoodClass
-  probability: number
-  predictedClass: FoodClass
-}) {
+function ProbabilityBar({ foodClass, probability }: { foodClass: FoodClass; probability: number }) {
   const percentage = Math.round(probability * 100)
-  const isWinner = foodClass === predictedClass
+  const isWinner = foodClass === 'bibimbap'
 
   return (
     <div className="mt-4">
@@ -55,8 +48,8 @@ function ProbabilityBar({
   )
 }
 
-export function ResultCard({ prediction, onFeedbackChange, showFeedback = true }: ResultCardProps) {
-  const predictedLabel = FOOD_LABELS[prediction.predictedClass]
+export function ResultCard({ prediction }: ResultCardProps) {
+  const predictedLabel = FOOD_LABELS[prediction.predicted_class]
 
   return (
     <section className="mt-6 rounded-2xl border border-border bg-background/70 p-5 sm:p-6">
@@ -75,30 +68,15 @@ export function ResultCard({ prediction, onFeedbackChange, showFeedback = true }
         </div>
       </div>
       <p className="mt-4 text-sm leading-6 text-muted">
-        {FOOD_DESCRIPTIONS[prediction.predictedClass]}
+        {FOOD_DESCRIPTIONS[prediction.predicted_class]}
       </p>
       <div className="mt-5 border-t border-border pt-4">
         <h4 className="text-xs font-semibold uppercase tracking-[0.15em] text-muted">
           Class probabilities
         </h4>
-        <ProbabilityBar
-          foodClass="bibimbap"
-          probability={prediction.probabilities.bibimbap}
-          predictedClass={prediction.predictedClass}
-        />
-        <ProbabilityBar
-          foodClass="fried_rice"
-          probability={prediction.probabilities.fried_rice}
-          predictedClass={prediction.predictedClass}
-        />
+        <ProbabilityBar foodClass="bibimbap" probability={prediction.probabilities.bibimbap} />
+        <ProbabilityBar foodClass="fried_rice" probability={prediction.probabilities.fried_rice} />
       </div>
-      {showFeedback && (
-        <FeedbackControl
-          key={prediction.id}
-          prediction={prediction}
-          onFeedbackChange={onFeedbackChange}
-        />
-      )}
     </section>
   )
 }
