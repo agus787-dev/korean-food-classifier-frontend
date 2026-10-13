@@ -38,6 +38,7 @@ export function Header() {
               <>
                 <NavLink to="/predict" className={linkClass}>Predict</NavLink>
                 <NavLink to="/history" className={linkClass}>History</NavLink>
+                {user.role === 'admin' && <NavLink to="/admin" className={linkClass}>Admin</NavLink>}
                 <details className="relative">
                   <summary className="max-w-32 cursor-pointer list-none truncate rounded-md px-2 py-1.5 text-sm font-semibold text-foreground hover:text-accent sm:max-w-44">
                     {user.displayName}

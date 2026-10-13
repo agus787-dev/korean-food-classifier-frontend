@@ -63,7 +63,14 @@ export async function request<T>(
   try {
     response = await fetch(getApiUrl(path), { ...init, headers })
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'name' in error &&
+      (error.name === 'AbortError' || error.name === 'TimeoutError')
+    ) {
+      throw error
+    }
     throw new ApiError('NETWORK_ERROR', 'Could not reach the backend. Check your connection.', 0)
   }
 
@@ -92,5 +99,47 @@ export async function request<T>(
     return (await response.json()) as T
   } catch {
     throw new ApiError('INVALID_RESPONSE', 'The backend returned an unreadable response.', response.status)
+  }
+}
+
+export async function requestBlob(path: string): Promise<Blob> {
+  if (!API_BASE_URL) {
+    throw new ApiError(
+      'API_NOT_CONFIGURED',
+      'The backend URL is not configured. Set VITE_API_URL and restart the app.',
+      0,
+    )
+  }
+  const headers = new Headers()
+  const token = localStorage.getItem(AUTH_TOKEN_KEY)
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+
+  let response: Response
+  try {
+    response = await fetch(getApiUrl(path), { headers })
+  } catch {
+    throw new ApiError('NETWORK_ERROR', 'Could not reach the backend. Check your connection.', 0)
+  }
+
+  if (!response.ok) {
+    let payload: unknown
+    try {
+      payload = await response.json()
+    } catch {
+      payload = null
+    }
+
+    const apiError = isErrorResponse(payload)
+      ? new ApiError(payload.error.code, payload.error.message, response.status)
+      : new ApiError('REQUEST_FAILED', 'The request could not be completed.', response.status)
+
+    if (response.status === 401 && token) redirectAfterUnauthorized()
+    throw apiError
+  }
+
+  try {
+    return await response.blob()
+  } catch {
+    throw new ApiError('INVALID_RESPONSE', 'The backend returned an unreadable image.', response.status)
   }
 }
